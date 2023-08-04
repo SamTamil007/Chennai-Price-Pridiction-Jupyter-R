@@ -1,0 +1,232 @@
+
+> # Load the required libraries
+> library(readr)
+> library(caret)
+Loading required package: ggplot2
+Loading required package: lattice
+> library(randomForest)
+randomForest 4.7-1.1
+Type rfNews() to see new features/changes/bug fixes.
+
+Attaching package: ‘randomForest’
+
+The following object is masked from ‘package:ggplot2’:
+
+    margin
+
+> library(kernlab)
+
+Attaching package: ‘kernlab’
+
+The following object is masked from ‘package:ggplot2’:
+
+    alpha
+
+> 
+> # Read the data and preprocess it
+> Chennai_Housing_Sales_Price <- read_csv("E:/Project_2/DataSet_SecondaryData/Chennai Housing Sales Price.csv",
++                                         col_types = cols(DATE_SALE = col_date(format = "%d-%m-%Y"),
++                                                          DATE_BUILD = col_date(format = "%d-%m-%Y")))
+> df1 <- Chennai_Housing_Sales_Price                                                                                              
+> 
+> # Data preprocessing (rename areas)
+> df1$AREA[df1$AREA %in% c("Velchery", "Chrompt", "Chrmpet", "Chormpet")] <- "Velachery"
+> df1$AREA[df1$AREA == "TNagar"] <- "T Nagar"
+> df1$AREA[df1$AREA == "KKNagar"] <- "KK Nagar"
+> df1$AREA[df1$AREA == "Karapakam"] <- "Karapakkam"
+> df1$AREA[df1$AREA %in% c("Ann Nagar", "Ana Nagar")] <- "Anna Nagar"
+> df1$AREA[df1$AREA == "Adyr"] <- "Adyar"
+> 
+> # Perform data imputation (omit rows with missing values)
+> df2 <- na.omit(df1)
+> 
+> # Convert df2 to a data frame and name it df3
+> df3 <- as.data.frame(df2)
+> 
+> # Identify and remove outliers from N_BEDROOM and N_BATHROOM columns
+> outlier_threshold <- 1.5  # Adjust this value to control the sensitivity of outlier detection
+> 
+> # Function to remove outliers based on IQR method
+> remove_outliers <- function(x) {
++   Q1 <- quantile(x, 0.25)
++   Q3 <- quantile(x, 0.75)
++   IQR_val <- Q3 - Q1
++   lower_bound <- Q1 - outlier_threshold * IQR_val
++   upper_bound <- Q3 + outlier_threshold * IQR_val
++   x[which(x < lower_bound | x > upper_bound)] <- NA
++   return(x)
++ }
+> 
+> # Apply the remove_outliers function to N_BEDROOM and N_BATHROOM columns
+> df3$N_BEDROOM <- remove_outliers(df3$N_BEDROOM)
+> df3$N_BATHROOM <- remove_outliers(df3$N_BATHROOM)
+> 
+> # Remove rows with NA values after outlier removal
+> df3 <- na.omit(df3)
+> 
+> # Create candidate models with a variety of regression methods
+> candidate_models <- list(
++   #  model1 = SALES_PRICE ~ N_BEDROOM,
++   #  model2 = SALES_PRICE ~ N_BEDROOM + N_BATHROOM,
++   #  model3 = SALES_PRICE ~ N_BEDROOM + N_BATHROOM + AREA,
++   #  model4 = SALES_PRICE ~ poly(N_BEDROOM, 2),
++   #  model5 = SALES_PRICE ~ N_BEDROOM + factor(AREA),
++   #  model6 = SALES_PRICE ~ N_BEDROOM + N_BATHROOM + factor(AREA),
++   model7 = SALES_PRICE ~ N_BEDROOM + N_BATHROOM + factor(AREA) + INT_SQFT +factor(SALE_COND)+factor(PARK_FACIL)+factor(BUILDTYPE)+factor(UTILITY_AVAIL)+factor(STREET)+factor(QS_ROOMS)+REG_FEE+COMMIS
++ )
+> 
+> # Number of cross-validation folds
+> num_folds <- 5
+> 
+> # Set a random seed for reproducibility
+> set.seed(123)
+> 
+> # Perform cross-validation and store the results in cv_results
+> cv_results <- lapply(candidate_models, function(formula) {
++   model <- train(formula, data = df3, method = "lm", trControl = trainControl(method = "cv", number = num_folds))
++   return(model)
++ })
+Warning message:
+In predict.lm(modelFit, newdata) :
+  prediction from rank-deficient fit; attr(*, "non-estim") has doubtful cases
+> 
+> # Extract the RMSE values from the cross-validation results (you can use other metrics too)
+> evaluation_metrics <- sapply(cv_results, function(model) {
++   predictions <- predict(model, newdata = df3)
++   true_values <- df3$SALES_PRICE
++   return(sqrt(mean((true_values - predictions)^2))) # RMSE used for evaluation
++ })
+Warning message:
+In predict.lm(modelFit, newdata) :
+  prediction from rank-deficient fit; attr(*, "non-estim") has doubtful cases
+> 
+> # Find the index of the best model based on the lowest RMSE value
+> best_model_index <- which.min(evaluation_metrics)
+> 
+> # Retrieve the best model formula based on the index
+> best_model <- candidate_models[[best_model_index]]
+> 
+> # Convert the formula to a character string
+> best_model_formula <- as.character(formula(best_model))
+> 
+> # Print the best model's formula and RMSE value
+> cat("Best model formula:", best_model_formula, "\n")
+Best model formula: ~ SALES_PRICE N_BEDROOM + N_BATHROOM + factor(AREA) + INT_SQFT + factor(SALE_COND) + factor(PARK_FACIL) + factor(BUILDTYPE) + factor(UTILITY_AVAIL) + factor(STREET) + factor(QS_ROOMS) + REG_FEE + COMMIS 
+> cat("Best model RMSE:", evaluation_metrics[best_model_index], "\n")
+Best model RMSE: 879086.7 
+> 
+> final_model <- train(best_model, data = df3, method = "lm")
+There were 14 warnings (use warnings() to see them)
+> 
+> # Print the final model summary (optional)
+> print(summary(final_model$finalModel))
+
+Call:
+lm(formula = .outcome ~ ., data = dat)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-2627401  -564663   -25025   519145  3864815 
+
+Coefficients: (1 not defined because of singularities)
+                                 Estimate Std. Error t value Pr(>|t|)    
+(Intercept)                     4.029e+06  1.344e+06   2.999 0.002722 ** 
+N_BEDROOM                       2.953e+05  4.277e+04   6.903 5.69e-12 ***
+N_BATHROOM                             NA         NA      NA       NA    
+`factor(AREA)Anna Nagar`        1.808e+06  7.890e+04  22.922  < 2e-16 ***
+`factor(AREA)Chrompet`          9.632e+05  4.327e+04  22.258  < 2e-16 ***
+`factor(AREA)Karapakkam`       -1.886e+06  4.771e+04 -39.534  < 2e-16 ***
+`factor(AREA)KK Nagar`         -1.470e+06  7.532e+04 -19.521  < 2e-16 ***
+`factor(AREA)T Nagar`           1.876e+06  8.293e+04  22.618  < 2e-16 ***
+`factor(AREA)Velachery`        -1.253e+06  7.311e+04 -17.137  < 2e-16 ***
+INT_SQFT                        2.398e+03  8.482e+01  28.267  < 2e-16 ***
+`factor(SALE_COND)AbNormal`     2.244e+05  8.883e+05   0.253 0.800575    
+`factor(SALE_COND)Adj Land`     8.142e+05  9.596e+05   0.848 0.396200    
+`factor(SALE_COND)AdjLand`      5.040e+05  8.882e+05   0.567 0.570473    
+`factor(SALE_COND)Family`       1.867e+05  8.882e+05   0.210 0.833555    
+`factor(SALE_COND)Normal Sale`  3.067e+05  8.882e+05   0.345 0.729902    
+`factor(SALE_COND)Partial`      1.207e+05  8.882e+05   0.136 0.891939    
+`factor(SALE_COND)Partiall`     1.968e+06  1.256e+06   1.567 0.117132    
+`factor(SALE_COND)PartiaLl`    -2.521e+05  1.255e+06  -0.201 0.840842    
+`factor(PARK_FACIL)Noo`        -7.047e+05  8.888e+05  -0.793 0.427857    
+`factor(PARK_FACIL)Yes`         5.587e+05  2.512e+04  22.246  < 2e-16 ***
+`factor(BUILDTYPE)Commercial`   6.838e+05  4.452e+05   1.536 0.124565    
+`factor(BUILDTYPE)House`       -1.962e+06  4.455e+05  -4.405 1.08e-05 ***
+`factor(BUILDTYPE)Other`       -1.442e+06  4.857e+05  -2.969 0.003002 ** 
+`factor(BUILDTYPE)Others`      -1.593e+06  4.454e+05  -3.577 0.000351 ***
+`factor(UTILITY_AVAIL)AllPub`  -3.541e+05  8.890e+05  -0.398 0.690408    
+`factor(UTILITY_AVAIL)ELO`     -5.559e+05  8.890e+05  -0.625 0.531826    
+`factor(UTILITY_AVAIL)NoSeWa`  -5.299e+05  8.890e+05  -0.596 0.551175    
+`factor(UTILITY_AVAIL)NoSewr`  -4.580e+05  8.890e+05  -0.515 0.606461    
+`factor(STREET)No Access`      -6.764e+05  3.118e+04 -21.689  < 2e-16 ***
+`factor(STREET)NoAccess`       -8.071e+04  3.979e+05  -0.203 0.839258    
+`factor(STREET)Pavd`           -2.916e+05  2.685e+05  -1.086 0.277666    
+`factor(STREET)Paved`          -3.142e+05  2.887e+04 -10.883  < 2e-16 ***
+`factor(QS_ROOMS)2.1`          -5.130e+04  9.409e+04  -0.545 0.585656    
+`factor(QS_ROOMS)2.2`          -6.534e+04  9.675e+04  -0.675 0.499458    
+`factor(QS_ROOMS)2.3`          -1.124e+05  9.585e+04  -1.173 0.240934    
+`factor(QS_ROOMS)2.4`          -2.030e+04  9.812e+04  -0.207 0.836135    
+`factor(QS_ROOMS)2.5`          -6.912e+04  9.219e+04  -0.750 0.453485    
+`factor(QS_ROOMS)2.6`          -2.990e+04  9.443e+04  -0.317 0.751565    
+`factor(QS_ROOMS)2.7`          -3.693e+04  1.008e+05  -0.366 0.714130    
+`factor(QS_ROOMS)2.8`          -1.944e+05  9.665e+04  -2.011 0.044359 *  
+`factor(QS_ROOMS)2.9`          -9.861e+04  9.464e+04  -1.042 0.297461    
+`factor(QS_ROOMS)3`            -1.749e+04  9.490e+04  -0.184 0.853806    
+`factor(QS_ROOMS)3.1`          -2.315e+05  9.559e+04  -2.422 0.015463 *  
+`factor(QS_ROOMS)3.2`          -1.075e+03  9.733e+04  -0.011 0.991185    
+`factor(QS_ROOMS)3.3`          -6.535e+04  9.422e+04  -0.694 0.487936    
+`factor(QS_ROOMS)3.4`           6.262e+04  9.466e+04   0.661 0.508341    
+`factor(QS_ROOMS)3.5`          -6.435e+04  9.479e+04  -0.679 0.497267    
+`factor(QS_ROOMS)3.6`          -1.342e+05  9.419e+04  -1.425 0.154256    
+`factor(QS_ROOMS)3.7`           6.860e+03  1.002e+05   0.068 0.945420    
+`factor(QS_ROOMS)3.8`          -1.145e+05  9.408e+04  -1.217 0.223714    
+`factor(QS_ROOMS)3.9`           3.743e+04  9.310e+04   0.402 0.687691    
+`factor(QS_ROOMS)4`            -6.499e+04  9.725e+04  -0.668 0.504023    
+`factor(QS_ROOMS)4.1`          -8.454e+03  9.527e+04  -0.089 0.929297    
+`factor(QS_ROOMS)4.2`           1.164e+05  9.430e+04   1.235 0.216967    
+`factor(QS_ROOMS)4.3`          -6.796e+04  9.496e+04  -0.716 0.474226    
+`factor(QS_ROOMS)4.4`          -1.304e+05  9.643e+04  -1.352 0.176504    
+`factor(QS_ROOMS)4.5`          -2.424e+05  9.527e+04  -2.544 0.010988 *  
+`factor(QS_ROOMS)4.6`          -1.143e+05  9.354e+04  -1.222 0.221656    
+`factor(QS_ROOMS)4.7`          -3.053e+04  9.409e+04  -0.324 0.745613    
+`factor(QS_ROOMS)4.8`          -1.280e+05  9.487e+04  -1.349 0.177338    
+`factor(QS_ROOMS)4.9`          -6.040e+04  9.418e+04  -0.641 0.521336    
+`factor(QS_ROOMS)5`             1.425e+05  9.741e+04   1.463 0.143409    
+REG_FEE                         1.111e+01  1.977e-01  56.197  < 2e-16 ***
+COMMIS                          2.957e+00  2.307e-01  12.816  < 2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 884100 on 5489 degrees of freedom
+Multiple R-squared:  0.9481,	Adjusted R-squared:  0.9475 
+F-statistic:  1618 on 62 and 5489 DF,  p-value: < 2.2e-16
+
+> 
+> # Create the example new data as a data frame
+> new_data <- data.frame(
++   N_BEDROOM = c(1, 2, 1),
++   N_BATHROOM = c(1, 1, 1),
++   AREA = c("Karapakkam", "Anna Nagar", "Adyar"),
++   INT_SQFT = c(1004,1986,909),
++   DIST_MAINROAD = c(131,26,70),
++   SALE_COND=c("AbNormal","AbNormal","AbNormal"),
++   PARK_FACIL=c("Yes","No","Yes"),
++   BUILDTYPE=c("Commercial","Commercial","Commercial"),
++   UTILITY_AVAIL=c("AllPub","AllPub","ELO"),
++   STREET=c("Paved","Gravel","Gravel"),
++   QS_ROOMS=c(4.0,4.9,4.1),
++   REG_FEE=c(380000,760122,421094),
++   COMMIS=c(144400,304049,92114)
++ )
+> 
+> # Make predictions on new_data using the trained model
+> predictions <- predict(final_model, newdata = new_data)
+> 
+> # Display the predictions
+> print(predictions)
+       1        2        3 
+10227401 21026182 12356518 
+> 
+> # Create a new boxplot after outlier removal
+> boxplot(df3$N_BEDROOM, df3$N_BATHROOM, horizontal = TRUE)
+> 
