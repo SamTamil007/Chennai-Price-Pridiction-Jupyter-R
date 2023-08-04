@@ -31,12 +31,6 @@ The goal of this project is to predict housing sales prices in Chennai using a m
    cd Chennai-Housing-Sales-Price
    ```
 
-3. Install the required dependencies:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
 ## Usage
 
 1. Make sure you have the required Python packages installed.
